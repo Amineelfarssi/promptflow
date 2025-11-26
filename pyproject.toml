@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptflow"
+version = "0.1.0"
+description = "A lightweight, S3-native prompt management and versioning system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Amine", email = "amine@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "boto3>=1.28.0",
+    "pydantic>=2.0.0",
+    "jinja2>=3.1.0",
+    "python-dateutil>=2.8.0",
+    "xxhash>=3.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "moto[s3]>=4.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "boto3-stubs[s3]>=1.28.0",
+]
+api = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+]
+dashboard = [
+    "streamlit>=1.30.0",
+    "pandas>=2.0.0",
+]
+strands = [
+    "strands-agents>=1.0.0",
+]
+bedrock = [
+    # boto3 already included in base dependencies
+]
+all = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "streamlit>=1.30.0",
+    "pandas>=2.0.0",
+    "strands-agents>=1.0.0",
+]
+
+[project.scripts]
+promptflow = "promptflow.cli:app"
+promptflow-dashboard = "promptflow.dashboard:run"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/promptflow"
+Documentation = "https://github.com/yourusername/promptflow#readme"
+Repository = "https://github.com/yourusername/promptflow"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

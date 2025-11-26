@@ -1,0 +1,3 @@
+[console_scripts]
+promptflow = promptflow.cli:app
+promptflow-dashboard = promptflow.dashboard:run

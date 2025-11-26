@@ -1,0 +1,484 @@
+# PromptFlow
+
+A lightweight, S3-native prompt management and versioning system designed for AWS environments. Inspired by [PromptLayer](https://promptlayer.com) and [Cuebit](https://github.com/iRahulPandey/Cuebit), but built specifically for environments with Python and S3 access only.
+
+## Features
+
+- 🔐 **Version Control**: Full version history with immutable versions and content hashing
+- 🏷️ **Alias System**: Semantic versioning with aliases (prod, staging, dev)
+- 📁 **Project Organization**: Organize prompts by project with tags
+- 🔄 **Template Rendering**: Support for f-string and Jinja2 templates
+- 📊 **Metadata Management**: Store model configs, temperature, and custom metadata
+- 🔍 **Search & Discovery**: Find prompts by name, description, tags, or content
+- 📤 **Export/Import**: Backup and migrate prompts between environments
+- 🌐 **REST API**: Optional FastAPI server for remote access
+- 🔗 **AWS Integration**: Native support for Bedrock and Strands Agents
+
+## Installation
+
+```bash
+# Basic installation
+pip install promptflow
+
+# With API server
+pip install promptflow[api]
+
+# With Streamlit dashboard
+pip install promptflow[dashboard]
+
+# With Strands Agents integration
+pip install promptflow[strands]
+
+# All features
+pip install promptflow[all]
+```
+
+## Quick Start
+
+### Local Development
+
+```python
+from promptflow import PromptRegistry
+
+# Initialize with local storage (default)
+registry = PromptRegistry()
+
+# Register a new prompt
+prompt = registry.register(
+    name="summarizer",
+    template="Summarize the following text in {style} style:\n\n{text}",
+    project="nlp",
+    description="Text summarization prompt",
+    tags=["production", "gpt-4"],
+    metadata={"model": "gpt-4", "temperature": 0.7, "max_tokens": 500}
+)
+
+# Render the prompt
+rendered = registry.render(
+    "summarizer",
+    project="nlp",
+    style="concise",
+    text="Long document here..."
+)
+print(rendered)
+```
+
+### Production with S3
+
+```python
+from promptflow import PromptRegistry
+
+# Initialize with S3 storage
+registry = PromptRegistry.from_s3(
+    bucket="my-prompts-bucket",
+    prefix="prod/prompts",
+    region="eu-west-1"
+)
+
+# Or use environment variables
+# PROMPTFLOW_STORAGE=s3
+# PROMPTFLOW_S3_BUCKET=my-prompts-bucket
+# PROMPTFLOW_S3_PREFIX=prod/prompts
+registry = PromptRegistry.from_env()
+```
+
+## Version Management
+
+```python
+# Update a prompt (creates new version)
+registry.update(
+    "summarizer",
+    template="Please summarize this text concisely:\n\n{text}",
+    change_message="Simplified template",
+    updated_by="alice"
+)
+
+# Get specific version
+v1 = registry.get("summarizer", version=1)
+v2 = registry.get("summarizer", version=2)
+
+# Set aliases for deployment stages
+registry.set_alias("summarizer", "prod", version=1)
+registry.set_alias("summarizer", "staging", version=2)
+
+# Get by alias
+prod_version = registry.get("summarizer", alias="prod")
+
+# Promote staging to production
+registry.promote("summarizer", from_alias="staging", to_alias="prod")
+
+# Rollback if needed
+registry.rollback("summarizer", to_version=1, alias="prod")
+```
+
+## AWS Bedrock Integration
+
+```python
+import boto3
+from promptflow.integrations.bedrock import BedrockPromptHelper
+
+# Initialize
+bedrock = boto3.client("bedrock-runtime")
+helper = BedrockPromptHelper()
+
+# Build complete Converse API request
+request = helper.build_converse_request(
+    "summarizer",
+    alias="prod",
+    system_prompt_name="summarizer-system",
+    text="Your document here..."
+)
+
+# Call Bedrock
+response = bedrock.converse(**request)
+print(response["output"]["message"]["content"][0]["text"])
+```
+
+Or use individual helpers:
+
+```python
+# Get messages for Converse API
+messages = helper.get_converse_messages(
+    "summarizer",
+    alias="prod",
+    text="Document to summarize..."
+)
+
+# Get system prompt
+system = helper.get_system_prompt("chat-system", alias="prod")
+
+# Get inference config from metadata
+config = helper.get_inference_config("summarizer")
+
+# Make the call
+response = bedrock.converse(
+    modelId=helper.get_model_id("summarizer"),
+    system=system,
+    messages=messages,
+    inferenceConfig=config
+)
+```
+
+## Strands Agents Integration
+
+```python
+from strands import Agent
+from promptflow.integrations.strands import PromptFlowToolkit, get_prompt_tools
+
+# Option 1: Use tools directly
+agent = Agent(
+    system_prompt="You help users by using managed prompts.",
+    tools=get_prompt_tools()
+)
+
+response = agent("Find and use the summarizer prompt to summarize this text...")
+
+# Option 2: Use toolkit for more control
+toolkit = PromptFlowToolkit()
+
+agent = Agent(
+    system_prompt=toolkit.get_system_prompt("agent-system", alias="prod"),
+    tools=toolkit.get_tools()
+)
+
+# The agent can now:
+# - Search for prompts: "Find prompts for summarization"
+# - Get specific prompts: "Get the summarizer prompt"
+# - Render prompts with variables: "Render the greeting prompt with name=Alice"
+```
+
+## CLI Usage
+
+```bash
+# Initialize storage
+promptflow init --s3-bucket my-bucket --s3-prefix prompts
+
+# Register a prompt
+promptflow register summarizer \
+    --template "Summarize: {text}" \
+    --project nlp \
+    --tags "prod,gpt-4"
+
+# Get a prompt
+promptflow get summarizer --alias prod
+
+# List prompts
+promptflow list --project nlp --tags prod
+
+# Render a prompt
+promptflow render summarizer --vars '{"text": "Hello world"}'
+
+# Update a prompt
+promptflow update summarizer \
+    --template "Please summarize: {text}" \
+    --message "Updated wording"
+
+# Set alias
+promptflow set-alias summarizer prod 2
+
+# View history
+promptflow history summarizer
+
+# Compare versions
+promptflow compare summarizer 1 2
+
+# Export/Import
+promptflow export nlp --output backup.json
+promptflow import backup.json --overwrite
+```
+
+## REST API
+
+Start the API server:
+
+```bash
+# Using CLI
+promptflow serve --host 0.0.0.0 --port 8000
+
+# Or programmatically
+from promptflow.api import run_server
+run_server(host="0.0.0.0", port=8000)
+```
+
+## Streamlit Dashboard
+
+A PromptLayer-inspired visual interface for managing prompts.
+
+### Running the Dashboard
+
+```bash
+# Install dashboard dependencies
+pip install promptflow[dashboard]
+
+# Run with CLI
+promptflow-dashboard
+
+# Or directly with Streamlit
+streamlit run src/promptflow/dashboard/app.py
+
+# With custom storage
+PROMPTFLOW_STORAGE=s3 \
+PROMPTFLOW_S3_BUCKET=my-bucket \
+streamlit run src/promptflow/dashboard/app.py
+```
+
+### Dashboard Features
+
+| Feature | Description |
+|---------|-------------|
+| **Prompt Registry** | Browse, search, and filter prompts by project and tags |
+| **Visual Editor** | Edit templates with syntax highlighting and variable detection |
+| **Version History** | View all versions, compare changes, and rollback |
+| **Alias Management** | Set and manage release labels (prod, staging, dev) |
+| **Playground** | Test prompts with sample variables and see rendered output |
+| **Analytics** | View stats on prompts, versions, projects, and tags |
+| **Export/Import** | Backup and migrate prompts between environments |
+
+### Dashboard Screenshots
+
+The dashboard provides:
+- **Registry View**: Card-based prompt listing with version badges and alias labels
+- **Template Editor**: Side-by-side view with variables highlighted
+- **History Timeline**: Visual diff between versions with rollback capability
+- **Playground**: Test rendering with variable inputs
+
+API endpoints:
+
+```
+GET  /api/v1/projects                    - List projects
+GET  /api/v1/prompts                     - List prompts
+POST /api/v1/prompts                     - Create prompt
+GET  /api/v1/prompts/{id}                - Get prompt
+PUT  /api/v1/prompts/{id}                - Update prompt
+DELETE /api/v1/prompts/{id}              - Delete prompt
+POST /api/v1/prompts/{id}/alias          - Set alias
+GET  /api/v1/prompts/{id}/history        - Version history
+POST /api/v1/prompts/render              - Render prompt
+POST /api/v1/prompts/compare             - Compare versions
+GET  /api/v1/search?q=...                - Search prompts
+GET  /api/v1/export?project=...          - Export project
+POST /api/v1/import                      - Import prompts
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PROMPTFLOW_STORAGE` | Storage type: `s3` or `local` | `local` |
+| `PROMPTFLOW_S3_BUCKET` | S3 bucket name | - |
+| `PROMPTFLOW_S3_PREFIX` | S3 key prefix | `promptflow` |
+| `PROMPTFLOW_S3_REGION` | AWS region | Default region |
+| `PROMPTFLOW_S3_ENDPOINT` | Custom S3 endpoint | - |
+| `PROMPTFLOW_LOCAL_PATH` | Local storage path | `.promptflow` |
+| `PROMPTFLOW_DEFAULT_PROJECT` | Default project name | `default` |
+
+## Storage Structure
+
+### S3 Layout
+```
+s3://bucket/prefix/
+├── index.json                 # Global index
+└── projects/
+    └── {project}/
+        ├── index.json         # Project index
+        └── prompts/
+            └── {id}.json      # Prompt data
+```
+
+### Local Layout
+```
+.promptflow/
+├── index.json
+└── projects/
+    └── {project}/
+        ├── index.json
+        └── prompts/
+            └── {id}.json
+```
+
+## Template Formats
+
+### F-String (default)
+```python
+registry.register(
+    name="greeting",
+    template="Hello, {name}! Welcome to {place}.",
+    format=TemplateFormat.FSTRING
+)
+```
+
+### Jinja2
+```python
+registry.register(
+    name="email",
+    template="""
+    Dear {{ name }},
+    
+    {% if is_premium %}
+    Thank you for being a premium member!
+    {% endif %}
+    
+    Best regards
+    """,
+    format=TemplateFormat.JINJA2
+)
+```
+
+## Metadata Schema
+
+```python
+from promptflow import PromptMetadata
+
+metadata = PromptMetadata(
+    model="anthropic.claude-3-sonnet-20240229-v1:0",
+    temperature=0.7,
+    max_tokens=1000,
+    stop_sequences=["\n\n"],
+    custom={
+        "top_p": 0.9,
+        "use_case": "summarization",
+        "owner": "nlp-team"
+    }
+)
+```
+
+## AWS Deployment
+
+### Lambda Function
+
+```python
+import json
+from promptflow import PromptRegistry
+
+# Initialize once (outside handler for connection reuse)
+registry = PromptRegistry.from_s3(
+    bucket="my-prompts",
+    prefix="prod"
+)
+
+def handler(event, context):
+    prompt_name = event.get("prompt_name")
+    variables = event.get("variables", {})
+    alias = event.get("alias", "prod")
+    
+    rendered = registry.render(
+        prompt_name,
+        alias=alias,
+        **variables
+    )
+    
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"rendered": rendered})
+    }
+```
+
+### IAM Policy
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::my-prompts-bucket",
+                "arn:aws:s3:::my-prompts-bucket/prod/*"
+            ]
+        }
+    ]
+}
+```
+
+## Testing
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# With coverage
+pytest --cov=promptflow
+
+# Run specific test
+pytest tests/test_promptflow.py::TestPromptRegistry -v
+```
+
+## Development
+
+```bash
+# Clone repository
+git clone https://github.com/yourorg/promptflow.git
+cd promptflow
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install in development mode
+pip install -e ".[dev,all]"
+
+# Run linting
+black src tests
+ruff check src tests
+mypy src
+
+# Run tests
+pytest -v
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines and submit pull requests.
